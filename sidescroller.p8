@@ -17,9 +17,17 @@ cam={}
 cam.x=0
 cam.y=0
 
-inertia=1
-gravity=1.1
-groundlevel=112
+friction=0.75
+gravity=0.08
+accel=0.09
+
+function is_solid(x,y)
+ if (x < 0 or x >= 128) then
+  return true
+ end
+ local tile = mget(x, y)
+ return fget(tile,0)
+end
 
 function create_actor(kind,x,y,frame)
  local a={}
@@ -30,59 +38,94 @@ function create_actor(kind,x,y,frame)
  a.dy=0
  a.onground=false
  a.frame=frame
- a.cell_x=function(this)
-  return flr(a.x/8)
- end
- a.cell_y=function(this)
-  return flr(a.y/8)
- end
  add(actors, a)
  return a
 end
 
 function create_player(x,y,frame)
  local pl = create_actor(kinds.player,x,y,frame)
- pl.maxspeed=4
  pl.dir=dirs.right
  return pl 
 end
 
-function _init()
- actors = {}
- player = create_player(0, 0, 64)
-end
+function move_actor(a)
+ if (a.kind == kinds.player) then
+  move_player(a)
+ end
 
-function update_actor(a)
- if a.kind == kinds.player then
-  update_player(a)
+ a.onground=false
+ 
+ -- move horizontal
+ local x1 = a.x + a.dx + sgn(a.dx) * 0.3
+ if (is_solid(x1, a.y-0.5)) then
+  -- obstruction in the way
+  -- move as close as possible
+  while (not is_solid(a.x + sgn(a.dx)*0.3, a.y-0.5)) do
+   a.x += sgn(a.dx) * 0.1
+  end
+ else
+  -- all clear, move on
+  a.x += a.dx
  end
  
- local spr_under=mget(a.cell_x(), a.cell_y() + 1)
- if not fget(spr_under, 0) then
-  a.dy += gravity
-  a.y += a.dy
-  a.onground = false
+ -- vertical
+ if (a.dy < 0) then
+  -- up
+  if (is_solid(a.x-0.2, a.y+a.dy-1) or
+      is_solid(a.x+0.2, a.y+a.dy-1)) then
+   -- obstruction in the way
+   -- move as close as possible
+   a.dy = 0
+   while (not (is_solid(a.x-0.2, a.y-1) or
+               is_solid(a.x+0.2, a.y-1))) do
+    a.y -= 0.01
+   end
+  else
+   -- all clear, move up
+   a.y += a.dy     
+  end
  else
-  a.dy = 0
-  a.y = (a.cell_y()) * 8
-  a.onground = true
- end 
-
- a.x += a.dx * inertia
- if a.x < 0 then
-  a.x = 0
+  --down
+  if (is_solid(a.x-0.2, a.y+a.dy) or
+      is_solid(a.x+0.2, a.y+a.dy)) then
+   -- obstruction in the way
+   -- move as close as possible
+   a.dy = 0
+   a.onground = true
+   -- snap down
+   while (not (is_solid(a.x-0.2, a.y) or
+               is_solid(a.x+0.2, a.y))) do
+    a.y += 0.05
+   end
+  else
+   a.y += a.dy
+  end
+ end
+ 
+ a.dy += gravity
+ a.dy *= 0.95
+ 
+ -- friction
+ if (a.onground) then
+  a.dx *= friction
+ else
+  a.dx *= friction
  end
 end
 
-function is_solid(a,dx,dy)
- local tile = mget(a.cell_x()+dx, a.cell_y()+dy)
- return fget(tile,0)
-end
+function move_player(a)
+	if btn(btns.left) then
+  a.dx -= accel
+	 a.dir = dirs.left
+	end
+	
+	if btn(btns.right) then
+  a.dx += accel
+  a.dir = dirs.right
+	end
 
-function update_player(a)
  if btnp(btns.jump) and a.onground then
-  sfx(0)
-  a.dy = -7
+  a.dy = -0.7
  end
 
 	if a.onground then
@@ -90,55 +133,37 @@ function update_player(a)
 	else
 	 a.frame = 65
 	end
-	 
-	if btn(btns.left) and abs(a.dx) < a.maxspeed then
-	 if not is_solid(a, -1, 0) then
-	  a.dx -= 1
-	 end
-	 a.dir = dirs.left
-	end
-	
-	if btn(btns.right) and abs(a.dx) < a.maxspeed then
-	 if not is_solid(a, 1, 0) then
-   a.dx += 1
-  end
-  a.dir = dirs.right
-	end
-	
-	if not btn(btns.right) and a.dx > 0 then
-  a.dx -= 1
- elseif not btn(btns.left) and a.dx < 0 then
-	 a.dx += 1
- end
-end
-
-function _update()
- foreach(actors, update_actor)
 end
 
 function draw_actor(a)
  flipx=a.dir==dirs.left
- spr(a.frame, a.x, a.y, 1, 1, flipx)
+ spr(a.frame, a.x*8-4, a.y*8-4, 1, 1, flipx)
+end
+
+function update_camera(player)
+	cam.x = mid(0, player.x*8-64, 256-128)
+	camera(cam.x, cam.y)
+end
+
+function draw_map()
+	mapdraw(0,0,0,0,128,64)
+end
+
+function _init()
+ actors = {}
+ player = create_player(1, 0, 64)
+end
+
+function _update()
+ foreach(actors, move_actor)
 end
 
 function _draw()
  camera(0,0)
  rectfill(0,0, 127, 127, 0)
 
-	cursor(0,0)
- color(1)
- print(player.cell_x())
- print(player.cell_y())
- 
- local tile = mget(player.cell_x(), player.cell_y()+1)
- print(tile)
-
-	-- camera follows player
-	cam.x = mid(0, player.x - 64, 256 - 128)
-	camera(cam.x, cam.y)
-	mapdraw(0,0,0,0,128,64)
-
-	-- draw actors
+ update_camera(player) 
+ draw_map()
 	foreach(actors, draw_actor)
 end
 
@@ -286,7 +311,7 @@ __map__
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000012000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000011000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000011000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000010101010000000000000000000000000000000011000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0101000000000000000000000000000000000012000000000013000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000010100000000000000000000000012000011000000000011000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000001010000000000120000000011120011000012000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
