@@ -17,9 +17,10 @@ cam={}
 cam.x=0
 cam.y=0
 
-friction=0.75
-gravity=0.08
-accel=0.09
+factor=0.9
+friction=0.75*factor
+gravity=0.08*factor
+accel=0.09*factor
 
 function is_solid(x,y)
  if (x < 0 or x >= 128) then
@@ -124,7 +125,7 @@ function move_player(a)
   a.dir = dirs.right
 	end
 
- if btnp(btns.jump) and a.onground then
+ if btn(btns.jump) and a.onground then
   a.dy = -0.7
  end
 
@@ -154,7 +155,7 @@ function _init()
  player = create_player(1, 0, 64)
 end
 
-function _update()
+function _update60()
  foreach(actors, move_actor)
 end
 
